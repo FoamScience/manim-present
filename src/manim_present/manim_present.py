@@ -8,10 +8,11 @@ from omegaconf import DictConfig, OmegaConf
 import numpy as np
 import pandas as pd
 from scipy.spatial import ConvexHull
+from .CustomMobjects import VideoMobject
 import subprocess as sb
-import json
+import json, ffmpeg
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 log = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path=os.getcwd(), config_name="config.yaml")
@@ -63,6 +64,7 @@ class YamlPresentation(Slide):
             "svg": self.svg_step,
             "reset": self.reset_step,
             "plot": self.plot_step,
+            "video": self.video_step,
             "custom": self.custom_step,
         }
         self.diag_map = {
@@ -125,6 +127,17 @@ class YamlPresentation(Slide):
         self.to_next_slide(cfg)
         self.last = last
 
+    def video_step(self, cfg, last):
+        probe = ffmpeg.probe(f"./images/{cfg.video}")
+        duration = float(probe['format']['duration'])
+        speed = 1.0 if "speed" not in cfg.keys() else float(cfg.speed)
+        video = VideoMobject(f"./images/{cfg.video}", speed=speed).scale_to_fit_height(cfg.height)
+        video = self.common_positionning(cfg, video)
+        self.add(video)
+        self.wait(duration)
+        self.to_next_slide(cfg)
+        self.last = video
+
     def svg_step(self, cfg, last):
         color = None if "color" not in cfg.keys() else self.parse_eval(cfg.color)
         fill_color = color if "fill_color" not in cfg.keys() else self.parse_eval(cfg.fill_color)
@@ -153,7 +166,7 @@ class YamlPresentation(Slide):
                     code_partial = cfg.code
                     for m in e.modification:
                         for mi in m:
-                            code_partial = self.replace_nth_line(cfg.code, mi, m[mi])
+                            code_partial = self.replace_nth_line(code_partial, mi, m[mi])
                     last = Code(
                         code=code_partial,
                         language=cfg.language,
@@ -204,7 +217,9 @@ class YamlPresentation(Slide):
     def items_step(self, cfg, last):
         distance = self.item_distance if "distance" not in cfg.keys() else float(cfg.distance)
         anchor = last if "anchor" not in cfg.keys() else self.parse_eval(cfg.anchor)
-        last = self.itemize(cfg.bullets, anchor, distance, FadeIn)
+        t2w = {} if "weights" not in cfg.keys() else {item['text']: self.parse_eval(item['weight']) for item in cfg.weights}
+        t2c = {} if "colors" not in cfg.keys() else {item['text']: self.parse_eval(item['color']) for item in cfg.colors}
+        last = self.itemize(cfg.bullets, anchor, distance, FadeIn, t2w=t2w, t2c=t2c)
         self.to_next_slide(cfg)
         self.last = last
 
@@ -234,8 +249,8 @@ class YamlPresentation(Slide):
         axes_color = WHITE if "axes_color" not in cfg.keys() else self.parse_eval(cfg.axes_color)
         x_length = 6 if "x_length" not in cfg.keys() else int(cfg.x_length)
         y_length = 6 if "y_length" not in cfg.keys() else int(cfg.y_length)
-        x_steps = (df[cfg["columns"][0]].max()-df[cfg["columns"][0]].min())//x_length
-        y_steps = (y_range[1]-y_range[0])//y_length
+        x_steps = (df[cfg["columns"][0]].max()-df[cfg["columns"][0]].min())//x_length  if "x_step" not in cfg.keys() else cfg.x_step
+        y_steps = (y_range[1]-y_range[0])/y_length if "y_step" not in cfg.keys() else cfg.y_step
         axes = Axes(
             x_range=[x_range[0], x_range[1], x_steps],
             y_range=[y_range[0], y_range[1], y_steps],
@@ -286,7 +301,7 @@ class YamlPresentation(Slide):
         n_init = 3
         self.play(FadeIn(last[0:n_init]))
         self.to_next_slide(cfg)
-        for i in range(len(last[n_init:]) // len(cfg["columns"][1:])):
+        for i in range(len(cfg["columns"][1:])):
             self.to_next_slide(cfg)
             start = n_init+i*(len(last[n_init:]) // len(cfg["columns"][1:]))
             end = start + len(last[n_init:]) // len(cfg["columns"][1:])
@@ -309,6 +324,7 @@ class YamlPresentation(Slide):
         self.draw_arrow_to_last(cfg, prev)
         self.play(FadeIn(last))
         self.to_next_slide(cfg)
+        return { "anchors": bg.get_anchors(), "type": "rectangle" }
 
     def draw_arrow_to_last(self, cfg, prev):
         def get_pos(obj):
@@ -341,46 +357,67 @@ class YamlPresentation(Slide):
                 self.play(FadeIn(CurvedArrow(a1, a2, color=color, angle=angle)))
     
     def group_diag_items(self, cfg, last):
+        def get_furthest_from(pts, centroid):
+            dx = np.linalg.norm(pts - centroid, axis=1)
+            np.max(dx)
+            max_idx = np.where(dx == np.max(dx))[0]
+            return [pts[idx] for idx in max_idx]
         group_elements = Group()
+        anchors = []
+        anchor_points = []
         for e in cfg.steps:
-            self.diag_map[e.type](e, last)
+            subanchors = self.diag_map[e.type](e, last)
             group_elements.add(self.last)
+            anchors.append(subanchors)
+            anchor_points.append(subanchors["anchors"])
         group_color = self.warn_color if "color" not in cfg.keys() else self.parse_eval(cfg.color)
-        points = np.vstack([rect[1].get_anchors() for rect in group_elements])
+        points = np.vstack(anchor_points)
         points = np.unique(points, axis=0)
         centroid = np.mean(points, axis=0)
-        def get_furthest_from(shape, centroid):
-            pts = shape.get_anchors()
-            dx = np.linalg.norm(pts - centroid, axis=1)
-            max_idx = np.argmax(dx)
-            return pts[max_idx]
-        selected_points = np.vstack([[get_furthest_from(rect[1], centroid)] for rect in group_elements])
-        selected_points += 1e-3 * np.random.randn(*selected_points.shape)
-        hull = ConvexHull(selected_points)
-        hull_points = selected_points[hull.vertices]
+
+        selected_points = []
+        for anch in anchors:
+            if anch["type"] != "group":
+                selected_points += get_furthest_from(anch["anchors"], centroid)
+            else:
+                selected_points += list(anch["anchors"])
+        selected_points = np.vstack(selected_points)
+        selected_points = np.unique(selected_points, axis=0)
+        selected_points += 1e-2 * np.random.randn(*selected_points.shape)
+
         opacity = self.opacity if "opacity" not in cfg.keys() else float(cfg.opacity)
-        padding_factor = 1.1
         padded_hull_points = []
-        for point in hull_points:
-            direction = point - centroid
-            padded_point = centroid + padding_factor * direction
-            padded_hull_points.append(padded_point)
-        padded_hull_points = np.array(padded_hull_points)
+        if (len(selected_points) > 3):
+            hull = ConvexHull(selected_points)
+            array_set = set(tuple(arr.tolist()) for arr in selected_points[hull.vertices])
+            hull_points = [np.array(tpl) for tpl in array_set]
+            padding_factor = 1.1 if "padding" not in cfg.keys() else float(cfg.padding)
+            for point in hull_points:
+                direction = point - centroid
+                padded_point = centroid + padding_factor * direction
+                padded_hull_points.append(padded_point)
+            padded_hull_points = np.array(padded_hull_points)
+        else:
+            padded_hull_points = selected_points
         def angle_from_centroid(point):
             return np.arctan2(point[1] - centroid[1], point[0] - centroid[0])
         hull_points_sorted = sorted(padded_hull_points, key=angle_from_centroid)
         curved_surface = VMobject()
-        curved_surface.set_points_smoothly([*hull_points_sorted, hull_points_sorted[0]])
+        if "kind" in cfg.keys() and cfg["kind"] == "rectangle":
+            curved_surface = SurroundingRectangle(Polygon(*hull_points_sorted))
+        else:
+            curved_surface.set_points_smoothly([*hull_points_sorted, hull_points_sorted[0]])
         curved_surface.set_fill(group_color, opacity=opacity)
         curved_surface.set_stroke(group_color, width=0)
         self.play(FadeIn(curved_surface))
         group_elements.add(curved_surface)
         self.text_step(cfg.label, group_elements)
-        if "last_is_group" in cfg.keys() and cfg.last_is_group:
+        if "last_is_group" in cfg.keys() and bool(cfg.last_is_group):
             self.last = group_elements
         else:
             self.last = group_elements[-1]
         self.to_next_slide(cfg)
+        return { "anchors": selected_points, "type": "group" }
 
     def diagram_step(self, cfg, last):
         for e in cfg.steps:
@@ -399,6 +436,9 @@ class YamlPresentation(Slide):
         def parse_or_default(lvl0, lvl1, default_value, eval=True):
             if not eval:
                 return default_value if lvl0 not in c.keys() or lvl1 not in c[lvl0].keys() else c[lvl0][lvl1]
+            if lvl0 in c.keys() and lvl1 in c[lvl0].keys():
+                if str(c[lvl0][lvl1]).startswith("#"):
+                    return c[lvl0][lvl1]
             return default_value if lvl0 not in c.keys() or lvl1 not in c[lvl0].keys() else self.parse_eval(c[lvl0][lvl1])
         c = self.cfg.default_styling
         self.main_color = parse_or_default("color_presets", "main", color.TEAL_A)
@@ -406,7 +446,7 @@ class YamlPresentation(Slide):
         self.secondary_color = parse_or_default("color_presets", "secondary", color.BLUE_B)
         self.warn_color = parse_or_default("color_presets", "warn", color.YELLOW_C)
         self.important_color = parse_or_default("color_presets", "important", color.RED_C)
-        self.opacity = parse_or_default("color_presets", "opacity", 0.3)
+        self.opacity = parse_or_default("color_presets", "opacity", 0.3, False)
         self.text_color = parse_or_default("color_presets", "text", color.WHITE)
         self.item_icon = parse_or_default("itemize", "icon", "•", False)
         self.item_distance = parse_or_default("itemize", "distance", 1.5, False)
@@ -416,6 +456,7 @@ class YamlPresentation(Slide):
         self.m_size = parse_or_default("font", "mid", 20, False)
         self.b_size = parse_or_default("font", "big", 25, False)
         self.t_family = parse_or_default("font", "family", "Comic Code Ligatures", False)
+        self.camera.frame_rate = parse_or_default("camera", "frame_rate", 60, False)
         Text.set_default(
             font=self.t_family,
             color=self.text_color,
@@ -474,16 +515,18 @@ class YamlPresentation(Slide):
         mobjs = []
         mark_item_b = {f"{i+1}{self.item_icon}":BOLD for i in range(len(items))}
         if 't2w' in kwargs and isinstance(kwargs['t2w'], dict):
-            mark_item_b.update(kwargs['t2w'])
+            origt2w = kwargs.pop('t2w', None)
+            mark_item_b.update(origt2w)
         mark_item_c = {f"{i+1}{self.item_icon}":self.main_color for i in range(len(items))}
         if 't2c' in kwargs and isinstance(kwargs['t2c'], dict):
-            mark_item_c.update(kwargs['t2c'])
+            origt2c = kwargs.pop('t2c', None)
+            mark_item_c.update(origt2c)
         for i in range(len(items)):
             mobjs.append(Text(
                 f"{i+1}{self.item_icon} {items[i]}",
                 font_size=self.s_size,
-                t2c=mark_item_c,
                 t2w=mark_item_b,
+                t2c=mark_item_c,
                 **kwargs))
             if i == 0:
                 mobjs[i].next_to(anchor, DOWN*distance).align_to(anchor, LEFT)
@@ -535,10 +578,13 @@ class YamlPresentation(Slide):
         self.thanks_page()
 
 def main():
-    parser = argparse.ArgumentParser(description="Manim-Present")
+    parser = argparse.ArgumentParser(
+        description="Manim-Present",
+        epilog="Further arguments can be passed to Hydra.\nExample: `manim-present +setting=3` will add setting to the configuration."
+    )
     parser.add_argument("--version", action="version", version=__version__)
     args, unknown = parser.parse_known_args()
     hydra_main()
 
 if __name__ == "__main__":
-    hydra_main()
+    main()
