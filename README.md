@@ -1,15 +1,16 @@
 # Manim present
 
 This a template for manim-based presentations that is manipulated by a YAML configuration file.
-Mainly geared towards AI agents interactions.
+Mainly geared towards AI agents interactions. The outcome is an HTML presentation with metadata
+put in a `package.json` file.
 
-> [!NOTES]
+> [!NOTE]
 > Producing fancy but linear presentations with this tool should be easy and requires no
 > Python coding. But this is at very early stages of development, so expect things
-> change a lot
+> change frequently
 
 [manim-present](https://github.com/FoamScience/manim-present) repository provides an example presentation
-to showcase implemented features, but here some design principles:
+to showcase implemented features, but here are some design principles:
 
 1. The presentation flow is **mostly linear**. Often, the last rendered item is used as an anchor
    for the next one.
@@ -29,14 +30,18 @@ to showcase implemented features, but here some design principles:
      to specific code lines.
    - `custom`: accepts single-line python manim-like code to produce `Mobjects` to render
    - `diagram`: mostly-linear diagramming through rectangle nodes which can be grouped.
-   - `image`: media rendering for raster image formats
-   - `items`: similar to Latex's enumerate, but needs an anchor object for positioning 
-   - `plot`: simple scatter or line (or both) plotting
-   - `reset`: resets the slide, keeping layout elements
-   - `svg`: media rendering for SVG objects, recommended for symbols and vector logos
-   - `tex`: Latex rendering, recommended only for equations
+   - `image`: media rendering for raster image formats; from the images folder.
+   - `items`: similar to Latex's enumerate, but needs an anchor object for positioning, with
+     partial weighting and coloring
+   - `plot`: simple scatter or line (or both) plotting. CSV files loaded from a `data` folder.
+   - `reset`: resets the slide, keeping layout elements.
+   - `svg`: media rendering for SVG objects, recommended for symbols and vector logos.
+   - `tex`: Latex rendering, recommended only for equations.
    - `text`: simple text rendering, controlling font size and text color,
      with partial weighting and coloring
+   - `video`: renders an MP4 file and can set its playback speed and control its rendered height.
+     Video duration is automatically deduced using the `ffmpeg` package. Video files are stored in the
+     images folder.
 1. All slide components adhere to a common position scheme (These translate to Manim, in this order):
    - `align_to`: to align two objects in a direction. The target object can be the `{{ last }}` rendered item.
    - `next_to`: moves the object next to the target, and applies a translation in specified direction
