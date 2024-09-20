@@ -11,8 +11,9 @@ from scipy.spatial import ConvexHull
 from .CustomMobjects import VideoMobject
 import subprocess as sb
 import json, ffmpeg
+import math, random
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 log = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path=os.getcwd(), config_name="config.yaml")
@@ -71,6 +72,41 @@ class YamlPresentation(Slide):
             "rectangle": self.rectangle_item,
             "group": self.group_diag_items,
         }
+        self.hooks = {}
+
+    def register_hook(self, name, func):
+        if name not in self.hooks:
+            self.hooks[name] = []
+        self.hooks[name].append(func)
+
+    def load_hooks(self, cfg):
+        if os.path.exists(cfg.filename):
+            with open(cfg.filename, 'r') as file:
+                c = file.read()
+                local_vars = {}
+                hook_globals = {
+                    '__builtins__': __builtins__,
+                }
+                hook_globals.update(globals())
+                allowed_imports = {
+                    'math': math,
+                    'random': random,
+                    'numpy': np,
+                    'pandas': pd,
+                }
+                hook_globals.update(allowed_imports)
+                exec(c, hook_globals, local_vars)
+                self.hook_context = local_vars
+                for name, func in local_vars.items():
+                    if callable(func) and name in cfg.functions:
+                        self.register_hook(cfg.name, func)
+
+    def exec_hooks(self, cfg):
+        if cfg.name in self.hooks:
+            for func in self.hooks[cfg.name]:
+                func(self, cfg, self.hook_context)
+        else:
+            log.warning(f"No hooks registered for {cfg.name}")
 
     def to_next_slide(self, cfg):
         if "no_next_slide" not in cfg:
@@ -104,7 +140,7 @@ class YamlPresentation(Slide):
         color = self.text_color if "color" not in cfg.keys() else self.parse_eval(cfg.color)
         last = Text(cfg.text, color=color, t2w=t2w, t2c=t2c, font_size=font_size)
         last = self.common_positionning(cfg, last)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
@@ -116,14 +152,14 @@ class YamlPresentation(Slide):
             font_size=font_size
         )
         last = self.common_positionning(cfg, last)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
     def image_step(self, cfg, last):
         img = ImageMobject(f"./images/{cfg.image}").scale(float(cfg.scale))
         last = self.common_positionning(cfg, img)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
@@ -150,7 +186,7 @@ class YamlPresentation(Slide):
             fill_color=fill_color
         )
         last = self.common_positionning(cfg, img)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
@@ -176,9 +212,9 @@ class YamlPresentation(Slide):
                     )
                     last = self.common_positionning(cfg, last)
                     if mod_counter > 0:
-                        self.play(Transform(last_code, last))
+                        self.play(Transform(last_code, last, run_time=self.transform_rt))
                     else:
-                        self.play(FadeIn(last))
+                        self.play(FadeIn(last, run_time=self.fadein_rt))
                         self.last = last
                     last_code = last
                     mod_counter += 1
@@ -193,7 +229,7 @@ class YamlPresentation(Slide):
                 background=background,
             )
             last = self.common_positionning(cfg, last)
-            self.play(Transform(last_code, last))
+            self.play(Transform(last_code, last, run_time=self.transform_rt))
         else:
             last = Code(
                 code=cfg.code,
@@ -203,14 +239,14 @@ class YamlPresentation(Slide):
                 background=background,
             )
             last = self.common_positionning(cfg, last)
-            self.play(FadeIn(last))
+            self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
     def custom_step(self, cfg, last):
         new = self.parse_eval(cfg.custom)
         last = self.common_positionning(cfg, new)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         self.last = last
 
@@ -299,13 +335,13 @@ class YamlPresentation(Slide):
                 pass
         last = self.common_positionning(cfg, plt)
         n_init = 3
-        self.play(FadeIn(last[0:n_init]))
+        self.play(FadeIn(last[0:n_init], run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         for i in range(len(cfg["columns"][1:])):
             self.to_next_slide(cfg)
             start = n_init+i*(len(last[n_init:]) // len(cfg["columns"][1:]))
             end = start + len(last[n_init:]) // len(cfg["columns"][1:])
-            self.play(DrawBorderThenFill(last[start:end]))
+            self.play(DrawBorderThenFill(last[start:end], run_time=self.drawborderthenfill_rt))
         self.to_next_slide(cfg)
         self.last = last
 
@@ -322,7 +358,7 @@ class YamlPresentation(Slide):
         last = self.common_positionning(cfg, grp)
         self.last = last
         self.draw_arrow_to_last(cfg, prev)
-        self.play(FadeIn(last))
+        self.play(FadeIn(last, run_time=self.fadein_rt))
         self.to_next_slide(cfg)
         return { "anchors": bg.get_anchors(), "type": "rectangle" }
 
@@ -352,9 +388,9 @@ class YamlPresentation(Slide):
             a2 = last_coords[np.argmin(dx2)]
             angle = np.arctan2(a2[1] - a1[1], a2[0] - a1[0])
             if same_x or same_y or np.abs(angle) < TAU/10 or np.abs(np.abs(angle)-TAU/4) < TAU/10 :
-                self.play(FadeIn(Arrow(a1, a2, buff=0.1, color=color)))
+                self.play(FadeIn(Arrow(a1, a2, buff=0.1, color=color), run_time=self.fadein_rt))
             else:
-                self.play(FadeIn(CurvedArrow(a1, a2, color=color, angle=angle)))
+                self.play(FadeIn(CurvedArrow(a1, a2, color=color, angle=angle), run_time=self.fadein_rt))
     
     def group_diag_items(self, cfg, last):
         def get_furthest_from(pts, centroid):
@@ -409,7 +445,7 @@ class YamlPresentation(Slide):
             curved_surface.set_points_smoothly([*hull_points_sorted, hull_points_sorted[0]])
         curved_surface.set_fill(group_color, opacity=opacity)
         curved_surface.set_stroke(group_color, width=0)
-        self.play(FadeIn(curved_surface))
+        self.play(FadeIn(curved_surface, run_time=self.fadein_rt))
         group_elements.add(curved_surface)
         self.text_step(cfg.label, group_elements)
         if "last_is_group" in cfg.keys() and bool(cfg.last_is_group):
@@ -457,6 +493,11 @@ class YamlPresentation(Slide):
         self.b_size = parse_or_default("font", "big", 25, False)
         self.t_family = parse_or_default("font", "family", "Comic Code Ligatures", False)
         self.camera.frame_rate = parse_or_default("camera", "frame_rate", 60, False)
+        self.itemize_rt = parse_or_default("runtime", "Itemize", 0.5, False)
+        self.fadein_rt = parse_or_default("runtime", "FadeIn", 0.5, False)
+        self.fadeout_rt = parse_or_default("runtime", "FadeOut", 0.5, False)
+        self.transform_rt = parse_or_default("runtime", "Transform", 0.5, False)
+        self.drawborderthenfill_rt = parse_or_default("runtime", "DrawBorderThenFill", 0.5, False)
         Text.set_default(
             font=self.t_family,
             color=self.text_color,
@@ -496,7 +537,7 @@ class YamlPresentation(Slide):
             raise Exception("Thanks in meta configuration is empty or not a string")
         self.keep_only_objects(self.layout)
         thanks = Text(self.cfg.meta.thanks, font_size=self.b_size+5)
-        self.play(Transform(self.layout[0], thanks))
+        self.play(Transform(self.layout[0], thanks, run_time=self.transform_rt))
 
     def replace_nth_line(self, string, n, repl):
         """replace nth line of string with repl"""
@@ -532,7 +573,7 @@ class YamlPresentation(Slide):
                 mobjs[i].next_to(anchor, DOWN*distance).align_to(anchor, LEFT)
             else:
                 mobjs[i].next_to(mobjs[i-1], DOWN).align_to(mobjs[i-1], LEFT)
-        anims = [animation(mobjs[i]) for i in range(len(items))]
+        anims = [animation(mobjs[i], run_time=self.itemize_rt) for i in range(len(items))]
         self.play(AnimationGroup(*anims))
         return mobjs[-1]
 
@@ -541,22 +582,22 @@ class YamlPresentation(Slide):
     
     def first_yaml_slide(self, cfg, logo_scale):
         self.play(
-            Transform(self.layout[0], self.layout[0].copy().to_edge(UP+LEFT)),
-            Transform(self.layout[-1], self.layout[-1].copy().scale(logo_scale).to_edge(UP+RIGHT)),
+            Transform(self.layout[0], self.layout[0].copy().to_edge(UP+LEFT), run_time=self.transform_rt),
+            Transform(self.layout[-1], self.layout[-1].copy().scale(logo_scale).to_edge(UP+RIGHT), run_time=self.transform_rt),
         )
         self.yaml_slide(cfg)
 
     def yaml_slide(self, cfg):
         title = self.header(cfg.title, cfg.number)
-        self.play(Transform( self.layout[0], title ))
+        self.play(Transform( self.layout[0], title , run_time=self.transform_rt))
         self.last = self.layout[0]
         if "content" in cfg.keys():
             for idx in range(len(cfg.content)):
                 c = cfg.content[idx]
                 self.entity_map[c.type](c, self.last)
         elif "hook" in cfg.keys():
-            # TODO: Complete hook system
-            pass
+            self.load_hooks(cfg.hook)
+            self.exec_hooks(cfg.hook)
         else:
             raise Exception("Either 'content' or 'hook' need to be present in slide configuration")
 
