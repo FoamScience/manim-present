@@ -25,25 +25,68 @@ to showcase implemented features, but here are some design principles:
      - `{{ title }}` refers to the slide's title
      - `{{ last }}` refers to last rendered item
      - `{{ small_size }}`, `{{ mid_size }}` and `{{ big_size }}` can be used for font size settings
-1. Slides are composed by steps:
-   - `code`: rendering code listings, supporting multi-step code reveals through modifications
-     to specific code lines.
-   - `custom`: accepts single-line python manim-like code to produce `Mobjects` to render
-   - `diagram`: mostly-linear diagramming through rectangle nodes which can be grouped.
-   - `image`: media rendering for raster image formats; from the images folder.
-   - `items`: similar to Latex's enumerate, but needs an anchor object for positioning, with
-     partial weighting and coloring
-   - `plot`: simple scatter or line (or both) plotting. CSV files loaded from a `data` folder.
-   - `reset`: resets the slide, keeping layout elements.
-   - `svg`: media rendering for SVG objects, recommended for symbols and vector logos.
-   - `tex`: Latex rendering, recommended only for equations.
-   - `text`: simple text rendering, controlling font size and text color,
-     with partial weighting and coloring
-   - `video`: renders an MP4 file and can set its playback speed and control its rendered height.
-     Video duration is automatically deduced using the `ffmpeg` package. Video files are stored in the
-     images folder.
-1. All slide components adhere to a common position scheme (These translate to Manim, in this order):
-   - `align_to`: to align two objects in a direction. The target object can be the `{{ last }}` rendered item.
-   - `next_to`: moves the object next to the target, and applies a translation in specified direction
-   - `shift`: moves the object by the input vector (eg. `2*UP+RIGHT` will move the object by (1, 2) units)
-   - `rotate`: rotates an object around an axis (Z-axis by default) by an input angle (in radians)
+1. The YAML configuration supports two modes of slide population:
+   - `content` through pre-defined steps listed below
+   - `hook` which can read custom-made python functions to render Manim objects.
+
+### The content steps
+
+Content slides are composed by steps:
+- `code`: rendering code listings, supporting multi-step code reveals through modifications
+  to specific code lines.
+- `custom`: accepts single-line python manim-like code to produce `Mobjects` to render
+- `diagram`: mostly-linear diagramming through rectangle nodes which can be grouped.
+- `image`: media rendering for raster image formats; from the images folder.
+- `items`: similar to Latex's enumerate, but needs an anchor object for positioning, with
+  partial weighting and coloring
+- `mathtex`: a Tex environment specifically for math mode. This is similar to `tex`.
+- `plot`: simple scatter or line (or both) plotting. CSV files loaded from a `data` folder.
+- `reset`: resets the slide, keeping layout elements.
+- `svg`: media rendering for SVG objects, recommended for symbols and vector logos.
+- `tex`: Latex rendering, recommended only for equations.
+- `text`: simple text rendering, controlling font size and text color,
+  with partial weighting and coloring
+- `video`: renders an MP4 file and can set its playback speed and control its rendered height.
+  Video duration is automatically deduced using the `ffmpeg` package. Video files are stored in the
+  images folder.
+
+All slide components adhere to a common position scheme (These translate to Manim, in this order):
+- `align_to`: to align two objects in a direction. The target object can be the `{{ last }}` rendered item.
+- `next_to`: moves the object next to the target, and applies a translation in specified direction
+- `shift`: moves the object by the input vector (eg. `2*UP+RIGHT` will move the object by (1, 2) units)
+- `rotate`: rotates an object around an axis (Z-axis by default) by an input angle (in radians)
+
+### The hooks system
+
+```yaml
+# config.yaml
+slides:
+  - title: A slide made with a hook function
+    number: "1.0"
+    hook:
+      name: section0 # arbitrary name
+      filename: hooks/section0.py # python file that defines example_slide()
+      functions: example_slide
+```
+
+This configuration will look for `hooks/section0.py` file and load-in the `example_slide` function.
+The `example_slide` function should look like:
+```python
+# hooks/section0.py
+SOME_LOCAL_VAR = True
+# self: is the presentation class
+# cfg: is the hook configuration from config.yaml
+# so, cfg.name, cfg.filename, and cfg.functions are reserved
+# context: is the local context for the hook function 
+def example_slide(self, cfg, context):
+    var = context.get("SOME_LOCAL_VAR")
+    txt = Text(f"VAR was {var} here")
+    self.play(FadeIn(txt, run_time=self.fadein_rt))
+    self.next_slide()
+```
+
+There are a few important notes for writing hooks:
+- You get a Group of objects in `self.layout` including title (index 0), logo, and footer elements
+- If you want to remove everything on a slide but keep the layout, call `self.keep_only_objects(self.layout)`
+- Don't forget to set the `run_time` property for every animation you construct for a consistent 
+  behavior
