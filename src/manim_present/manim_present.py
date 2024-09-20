@@ -58,6 +58,7 @@ class YamlPresentation(Slide):
         self.entity_map = {
             "text": self.text_step,
             "tex": self.tex_step,
+            "mathtex": self.mathtex_step,
             "code": self.code_step,
             "items": self.items_step,
             "diagram": self.diagram_step,
@@ -150,6 +151,22 @@ class YamlPresentation(Slide):
             cfg.text,
             tex_environment='center' if "environment" not in cfg.keys() else cfg.environment,
             font_size=font_size
+        )
+        last = self.common_positionning(cfg, last)
+        self.play(FadeIn(last, run_time=self.fadein_rt))
+        self.to_next_slide(cfg)
+        self.last = last
+
+    def mathtex_step(self, cfg, last):
+        font_size = self.m_size if "font_size" not in cfg.keys() else self.parse_eval(cfg.font_size)
+        tex_to_color_map = {}
+        if "colors" in cfg.keys():
+            for e in cfg.colors:
+                tex_to_color_map.update({e.text: self.parse_eval(e.color)})
+        last = MathTex(
+            cfg.text,
+            font_size=font_size,
+            tex_to_color_map=tex_to_color_map,
         )
         last = self.common_positionning(cfg, last)
         self.play(FadeIn(last, run_time=self.fadein_rt))
