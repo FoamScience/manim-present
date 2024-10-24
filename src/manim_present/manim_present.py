@@ -13,7 +13,7 @@ import subprocess as sb
 import json, ffmpeg
 import math, random
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 log = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path=os.getcwd(), config_name="config.yaml")
