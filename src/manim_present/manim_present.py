@@ -296,10 +296,13 @@ def create_presentation_class(cfg):
             if "bold" in self.cfg.meta.footer.keys():
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
             n_digits = len(str(abs(self.total_slides)))
+            footer_txt = self.cfg.meta.footer.text
+            if self.cfg.slide_counter_in_footer:
+                footer_txt = f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}"
             self.play(
                 Transform(
                     self.layout[1],
-                    Text(f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}", t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT),
+                    Text(footer_txt, t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT),
                     run_time=self.transform_rt
                 )
             )
@@ -539,6 +542,7 @@ def create_presentation_class(cfg):
             self.fadeout_rt = parse_or_default("runtime", "FadeOut", 0.5, False)
             self.transform_rt = parse_or_default("runtime", "Transform", 0.5, False)
             self.drawborderthenfill_rt = parse_or_default("runtime", "DrawBorderThenFill", 0.5, False)
+            self.slide_counter_in_footer = parse_or_default("footer", "slide_counter", False, False)
             Text.set_default(
                 font=self.t_family,
                 color=self.text_color,
@@ -567,7 +571,10 @@ def create_presentation_class(cfg):
             if "bold" in self.cfg.meta.footer.keys():
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
             n_digits = len(str(abs(self.total_slides)))
-            footer = Text(f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}", t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
+            footer_txt = self.cfg.meta.footer.text
+            if self.cfg.slide_counter_in_footer:
+                footer_txt = f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}"
+            footer = Text(footer_txt, t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
             author = Text(f"{self.cfg.meta.author}, {self.cfg.meta.time}", font_size=self.vs_size).to_edge(DOWN+LEFT)
             logo = ImageMobject(f"./images/{self.cfg.meta.logo.image}").next_to(title, UP).scale(self.cfg.meta.logo.scale)
             self.layout.add(title, footer, author, logo)
