@@ -26,7 +26,7 @@ def hydra_main(cfg : DictConfig) -> None:
     scene = create_presentation_class(cfg)(cfg)
     scene.render()
     populate_package(cfg.meta)
-    command="manim-slides convert --to html -c progress=true -c controls=true -cslide_number=true 'YamlPresentation' 'YamlPresentation.html'"
+    command="manim-slides convert --to html -c progress=true -c controls=true -chistory=true -cshow_notes=true 'YamlPresentation' 'YamlPresentation.html'"
     result = sb.run(command, shell=True, capture_output=True, text=True)
     log.info("============= Manim Slides ==============")
     log.info(result.stdout)
@@ -57,6 +57,8 @@ def create_presentation_class(cfg):
             super().__init__()
             self.cfg = cfg
             self.layout = Group()
+            self.slide_count = 0
+            self.total_slides = 0
             self.entity_map = {
                 "text": self.text_step,
                 "tex": self.tex_step,
@@ -76,7 +78,15 @@ def create_presentation_class(cfg):
                 "group": self.group_diag_items,
             }
             self.hooks = {}
-    
+
+        def count_slides(self, cfg):
+            """Dry run to count the total number of slides."""
+            scene = create_presentation_class(cfg)(cfg)
+            scene.play = lambda *args, **kwargs: None
+            scene.count_slides = lambda cfg: 0
+            scene.construct()
+            return scene.slide_count
+
         def register_hook(self, name, func):
             if name not in self.hooks:
                 self.hooks[name] = []
@@ -281,7 +291,20 @@ def create_presentation_class(cfg):
         def reset_step(self, cfg, last):
             self.keep_only_objects(self.layout)
             self.next_slide()
+            self.slide_count += 1
+            footer_t2w = {}
+            if "bold" in self.cfg.meta.footer.keys():
+                footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
+            n_digits = len(str(abs(self.total_slides)))
+            self.play(
+                Transform(
+                    self.layout[1],
+                    Text(f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}", t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT),
+                    run_time=self.transform_rt
+                )
+            )
             self.last = self.layout[0]
+    
     
         def plot_step(self, cfg, last):
             """NOT USABLE YET"""
@@ -543,17 +566,18 @@ def create_presentation_class(cfg):
             footer_t2w = {}
             if "bold" in self.cfg.meta.footer.keys():
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
-            footer = Text(self.cfg.meta.footer.text, t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
+            n_digits = len(str(abs(self.total_slides)))
+            footer = Text(f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}", t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
             author = Text(f"{self.cfg.meta.author}, {self.cfg.meta.time}", font_size=self.vs_size).to_edge(DOWN+LEFT)
             logo = ImageMobject(f"./images/{self.cfg.meta.logo.image}").next_to(title, UP).scale(self.cfg.meta.logo.scale)
             self.layout.add(title, footer, author, logo)
-            self.play(FadeIn(self.layout))
+            self.play(FadeIn(self.layout, run_time=self.fadein_rt))
     
         def thanks_page(self):
             """Layout of thanks page"""
             if not isinstance(self.cfg.meta.thanks, str):
                 raise Exception("Thanks in meta configuration is empty or not a string")
-            self.keep_only_objects(self.layout)
+            self.reset_step(cfg, self.layout[0])
             thanks = Text(self.cfg.meta.thanks, font_size=self.b_size+5)
             self.play(Transform(self.layout[0], thanks, run_time=self.transform_rt))
     
@@ -621,13 +645,13 @@ def create_presentation_class(cfg):
     
         def construct(self):
             self.set_defaults()
+            self.total_slides = self.count_slides(self.cfg)
             self.camera.background_color = self.bg_color
             ## Title page
             self.title_page()
             self.next_slide()
             for idx in range(len(self.cfg.slides)):
-                self.keep_only_objects(self.layout)
-                self.last = self.layout[0]
+                self.reset_step(cfg, self.layout[0])
                 sl = self.cfg.slides[idx]
                 if idx == 0:
                     self.first_yaml_slide(sl, 0.5)
