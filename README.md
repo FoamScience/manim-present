@@ -28,6 +28,11 @@ to showcase implemented features, but here are some design principles:
 1. The YAML configuration supports two modes of slide population:
    - `content` through pre-defined steps listed below
    - `hook` which can read custom-made python functions to render Manim objects.
+2. If `footer.slide_counter` configuration item is `True`, a slide counter over
+   the total count of slides will be displayed. It is recommended to keep this as `False` (default)
+   and turn it on as the last iteration on the presentation. If this setting is turned on, there
+   will be excessive re-rendering (cached animations get invalidated because the total number of
+   slides changes as you add more). It gets increased on each `reset_step`.
 
 ### The content steps
 
