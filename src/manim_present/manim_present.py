@@ -297,7 +297,7 @@ def create_presentation_class(cfg):
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
             n_digits = len(str(abs(self.total_slides)))
             footer_txt = self.cfg.meta.footer.text
-            if self.cfg.slide_counter_in_footer:
+            if self.slide_counter_in_footer:
                 footer_txt = f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}"
             self.play(
                 Transform(
@@ -572,7 +572,7 @@ def create_presentation_class(cfg):
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
             n_digits = len(str(abs(self.total_slides)))
             footer_txt = self.cfg.meta.footer.text
-            if self.cfg.slide_counter_in_footer:
+            if self.slide_counter_in_footer:
                 footer_txt = f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}"
             footer = Text(footer_txt, t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
             author = Text(f"{self.cfg.meta.author}, {self.cfg.meta.time}", font_size=self.vs_size).to_edge(DOWN+LEFT)
