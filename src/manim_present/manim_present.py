@@ -11,7 +11,9 @@ from scipy.spatial import ConvexHull
 from .CustomMobjects import VideoMobject
 import subprocess as sb
 import json, ffmpeg
-import math, random
+import math, random, re
+from pybtex.database import parse_file as bib_file
+from pybtex import PybtexEngine as bibEngine, format_from_file
 
 __version__ = "0.0.6"
 log = logging.getLogger(__name__)
@@ -59,6 +61,11 @@ def create_presentation_class(cfg):
             self.layout = Group()
             self.slide_count = 0
             self.total_slides = 0
+            self.bib_data = bib_file("references.bib") if os.path.exists("references.bib") else None
+            self.bib_style = "unsrt"
+            self.bib_counter = 0
+            self.bib_font_size_multiplier = 0.8
+            self.bib_line_length = 5
             self.entity_map = {
                 "text": self.text_step,
                 "tex": self.tex_step,
@@ -78,6 +85,93 @@ def create_presentation_class(cfg):
                 "group": self.group_diag_items,
             }
             self.hooks = {}
+
+        def insert_newlines_at_whitespace(self, text):
+            max_length = max(len(self.layout[1].text), len(self.layout[2].text), 60)
+            lines = text.split('\n')
+            result = []
+            for line in lines:
+                while len(line) > max_length:
+                    split_pos = line.rfind(' ', 0, max_length)
+                    if split_pos != -1:
+                        result.append(line[:split_pos])
+                        line = line[split_pos + 1:]
+                    else:
+                        result.append(line[:max_length])
+                        line = line[max_length:]
+                result.append(line)
+            return '\n'.join(result)
+
+        def cite(self, entry):
+            bibliography_entry = bibEngine().format_from_string(
+                entry.to_string("bibtex"),
+                style=self.bib_style,
+                output_backend="markdown"
+            )
+            bibliography_entry = bibliography_entry.replace("\\","")
+            bibliography_entry = re.sub(r"\[.*?\]\((.*?)\)", r"\1", bibliography_entry)
+            bibliography_entry = re.sub(r"(\[.*?\] .*?), .*?\n", r"\1 et. al.\n", bibliography_entry)
+            bibliography_entry = re.sub(r'[ \t]+(?=\n)', '', bibliography_entry)
+            bibliography_entry = re.sub(r"(URL: https://.*?), .*", r"\1", bibliography_entry)
+            bibliography_entry = self.insert_newlines_at_whitespace(bibliography_entry)
+            if (self.bib_counter == 2):
+                bib_lines = bibliography_entry.split('\n')
+                max_length = max(len(line) for line in bib_lines)
+                aligned_lines = [line.rjust(max_length) for line in bib_lines]
+                bibliography_entry = '\n'.join(aligned_lines)
+            return bibliography_entry
+
+
+        def parse_bib(self, txt, cfg):
+            bib_matches = re.findall(r"@@([A-Za-z0-9]+)", txt)
+            text_styles = []
+            for m in bib_matches:
+                self.bib_counter += 1
+                if (self.bib_data == None):
+                    raise Exception(f"""
+                        No bibliography data was read, but @@{m} was used to cite a bibliography entry.
+                        Either remove the @@{m} if this was intended for citation purposes,
+                        or add a references.bib file that has a {m} entry (bibtex style).
+                    """)
+                if (self.bib_counter > 2):
+                    raise Exception("""
+                        Trying to put more than 2 citations on one slide overlay.
+                        This will result in a cluttered presentation so you're not alowed to do so.
+                        Add a reset step after the element thathas the second citation...
+                    """)
+                if m in self.bib_data.entries:
+                    entry = self.bib_data.entries[m]
+                    ref_cfg = OmegaConf.create({
+                        "text": self.cite(entry),
+                        "font_size": f"int(self.vs_size*{self.bib_font_size_multiplier})",
+                        "next_to": {
+                          "target": f"self.layout[{self.bib_counter}]",
+                          "dir": "0.7*UP",
+                        },
+                        "align_to": {
+                          "target": f"self.layout[{self.bib_counter}]",
+                          "dir": "RIGHT" if self.bib_counter==1 else "LEFT",
+                        },
+                        "no_next_slide": False
+                    })
+                    last = self.last
+                    self.text_step(ref_cfg, self.last, text_type=MarkupText);
+                    if (self.bib_line_length > 0):
+                        bib_line = Line(ORIGIN, self.bib_line_length*RIGHT, color=self.bib_line_color).next_to(
+                            self.last, 0.7*UP
+                        ).align_to(
+                            self.layout[self.bib_counter], RIGHT if self.bib_counter==1 else LEFT
+                        )
+                        self.add(bib_line)
+                    self.last = last
+                    text_styles.append(f"{ref_cfg.text[:ref_cfg.text.index(']') + 1].lstrip()}")
+                    txt = txt.replace(f"@@{m}", f"{ref_cfg.text[:ref_cfg.text.index(']') + 1].lstrip()}")
+                else:
+                    raise Exception(f"""
+                        No bibliography data was read for entry @@{m}.
+                        Make sure the references.bib file has a {m} entry.
+                    """)
+            return txt, text_styles
 
         def count_slides(self, cfg):
             """Dry run to count the total number of slides."""
@@ -140,7 +234,7 @@ def create_presentation_class(cfg):
                 last = last.rotate(self.parse_eval(cfg.rotate.angle), axis=axis, about_point=pnt)
             return last
     
-        def text_step(self, cfg, last):
+        def text_step(self, cfg, last, text_type=Text):
             t2w = {}
             if "weights" in cfg.keys():
                 for e in cfg.weights:
@@ -151,7 +245,13 @@ def create_presentation_class(cfg):
                     t2c.update({e.text: self.parse_eval(e.color)})
             font_size = self.m_size if "font_size" not in cfg.keys() else self.parse_eval(cfg.font_size)
             color = self.text_color if "color" not in cfg.keys() else self.parse_eval(cfg.color)
-            last = Text(cfg.text, color=color, t2w=t2w, t2c=t2c, font_size=font_size)
+            text, styles = self.parse_bib(cfg.text, cfg)
+            if len(styles) > 0:
+                t2c.update({st:self.main_color for st in styles})
+            if (text_type == MarkupText):
+                last = text_type(text, color=color, font_size=font_size, font=self.t_family)
+            else:
+                last = text_type(text, color=color, t2w=t2w, t2c=t2c, font_size=font_size)
             last = self.common_positionning(cfg, last)
             self.play(FadeIn(last, run_time=self.fadein_rt))
             self.to_next_slide(cfg)
@@ -292,6 +392,7 @@ def create_presentation_class(cfg):
             self.keep_only_objects(self.layout)
             self.next_slide()
             self.slide_count += 1
+            self.bib_counter = 0
             footer_t2w = {}
             if "bold" in self.cfg.meta.footer.keys():
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
@@ -543,6 +644,10 @@ def create_presentation_class(cfg):
             self.transform_rt = parse_or_default("runtime", "Transform", 0.5, False)
             self.drawborderthenfill_rt = parse_or_default("runtime", "DrawBorderThenFill", 0.5, False)
             self.slide_counter_in_footer = parse_or_default("footer", "slide_counter", False, False)
+            self.bib_style = parse_or_default("bibliography", "style", "unsrt", False)
+            self.bib_font_size_multiplier = parse_or_default("bibliography", "font_size_multiplier", 0.8, False)
+            self.bib_line_length = parse_or_default("bibliography", "line_length", 5, False)
+            self.bib_line_color = parse_or_default("bibliography", "line_color", self.main_color)
             Text.set_default(
                 font=self.t_family,
                 color=self.text_color,
@@ -612,8 +717,11 @@ def create_presentation_class(cfg):
                 origt2c = kwargs.pop('t2c', None)
                 mark_item_c.update(origt2c)
             for i in range(len(items)):
+                txt, styles = self.parse_bib(items[i], cfg)
+                if len(styles) > 0:
+                    mark_item_c.update({st:self.main_color for st in styles})
                 mobjs.append(Text(
-                    f"{i+1}{self.item_icon} {items[i]}",
+                    f"{i+1}{self.item_icon} {txt}",
                     font_size=self.s_size,
                     t2w=mark_item_b,
                     t2c=mark_item_c,
