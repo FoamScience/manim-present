@@ -15,9 +15,9 @@ to showcase implemented features, but here are some design principles:
 1. The presentation flow is **mostly linear**. Often, the last rendered item is used as an anchor
    for the next one.
 1. The presentation layout is kept lean and clean; with a title and a logo at the top, and a footer
-   that has author, date and the event description.
+   that has author, date and a short event description.
 1. You can segment the YAML configuration, as long as you include all relevant files in the main one:
-   - It's recommended  to configure Title and Thanks pages through a `meta/config.yaml`
+   - It's recommended  to configure Title and "Thanks" pages through a `meta/config.yaml`
    - It's also recommended to put default styling values in a `default_styling/config.yaml`
 1. The YAML configuration supports python code as values when it makes sense.
    - For example; an angle in radians can be set to `angle: "PI/4"`
@@ -28,11 +28,17 @@ to showcase implemented features, but here are some design principles:
 1. The YAML configuration supports two modes of slide population:
    - `content` through pre-defined steps listed below
    - `hook` which can read custom-made python functions to render Manim objects.
-2. If `footer.slide_counter` configuration item is `True`, a slide counter over
+1. If `footer.slide_counter` configuration item is `True`, a slide counter over
    the total count of slides will be displayed. It is recommended to keep this as `False` (default)
    and turn it on as the last iteration on the presentation. If this setting is turned on, there
    will be excessive re-rendering (cached animations get invalidated because the total number of
    slides changes as you add more). It gets increased on each `reset_step`.
+1. If you want cite papers, a `references.bib` file must be present at the root folder (where `config.yaml`
+   is located)
+   - Prefix entry ID with `@@` to cite it.
+   - More info about this mechanism in the dedicated section bellow.
+
+## Supplying slide contents
 
 ### The content steps
 
@@ -95,3 +101,24 @@ There are a few important notes for writing hooks:
 - If you want to remove everything on a slide but keep the layout, call `self.keep_only_objects(self.layout)`
 - Don't forget to set the `run_time` property for every animation you construct for a consistent 
   behavior
+
+## Managing Tex-like bibliography
+
+If you want to cite other people's work, you must compile a `references.bib` file that contains
+all entries to be cited.
+
+In `text` or `items` elements on the `config.yaml`, you can prefix bibliography entry ID with `@@` to cite it.
+
+For example, if the `references.bib` file has an entry `@misc{authorYear, ...}`, you would use `@@authorYear` 
+to cite it. The citation behavior/styling can be configured through:
+```yaml
+# for example; in default_styling/config.yaml
+bibliography:
+  style: alpha # style of the bibliography entry in the footer, styles from pybtex python package
+  font_size_multiplier: 0.9 # multiplied to get bibliography entry font size relative to very small font size
+  line_length: 5 # separation line for bibliography entry. A 0 will omit the separation line
+  line_color: "self.main_color" # color of separation line, these can be manim colors, hex colors, or from color presets.
+```
+
+You are only allowed to have at-most **two** cited papers per slide "overlay". The first one will be positioned 
+on the right, and the second one will be on the left.
