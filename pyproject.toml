@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "manim-present"
-version = "0.0.6"
+version = "0.0.7"
 authors = [
   { name="Mohammed Elwardi Fadeli", email="elwardifadeli@gmail.com" },
 ]
@@ -30,6 +30,7 @@ dependencies = [
     "scipy>=1.14.1",
     "opencv-python>=4.10.0.84",
     "ffmpeg-python>=0.2.0",
+    "pybtex>=0.24.0",
 ]
 
 [project.scripts]
