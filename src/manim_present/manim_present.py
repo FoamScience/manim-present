@@ -114,7 +114,7 @@ def create_presentation_class(cfg):
             bibliography_entry = re.sub(r'[ \t]+(?=\n)', '', bibliography_entry)
             bibliography_entry = re.sub(r"(URL: https://.*?), .*", r"\1", bibliography_entry)
             bibliography_entry = self.insert_newlines_at_whitespace(bibliography_entry)
-            if (self.bib_counter == 2):
+            if (self.bib_counter == 1):
                 bib_lines = bibliography_entry.split('\n')
                 max_length = max(len(line) for line in bib_lines)
                 aligned_lines = [line.rjust(max_length) for line in bib_lines]
@@ -424,28 +424,41 @@ def create_presentation_class(cfg):
             x_range = [1e100, -1e100] if "x_range" not in cfg.keys() else cfg.x_range
             xmin = df[cfg["columns"][0]].min()
             xmax = df[cfg["columns"][0]].max()
-            if x_range[0] > ymin:
-                x_range[0] = ymin
-            if x_range[1] < ymax:
+            if x_range[0] > xmin:
+                x_range[0] = xmin
+            if x_range[1] < xmax:
                 x_range[1] = ymax
             axes_color = WHITE if "axes_color" not in cfg.keys() else self.parse_eval(cfg.axes_color)
             x_length = 6 if "x_length" not in cfg.keys() else int(cfg.x_length)
             y_length = 6 if "y_length" not in cfg.keys() else int(cfg.y_length)
             x_steps = (df[cfg["columns"][0]].max()-df[cfg["columns"][0]].min())//x_length  if "x_step" not in cfg.keys() else cfg.x_step
+            if "x_labels" in cfg.keys():
+                x_steps = 1
             y_steps = (y_range[1]-y_range[0])/y_length if "y_step" not in cfg.keys() else cfg.y_step
             axes = Axes(
                 x_range=[x_range[0], x_range[1], x_steps],
                 y_range=[y_range[0], y_range[1], y_steps],
                 x_length=x_length,
                 y_length=y_length,
-                axis_config={"color": axes_color},
+                axis_config={"color": axes_color, "include_numbers": False},
                 tips=False,
             ).add_coordinates()
             x_label = Text(cfg["columns"][0], color=axes_color).move_to(axes.x_axis.get_center()+0.7*DOWN)
-            for tick_label in axes.x_axis.numbers:
-                tick_label.set_color(axes_color)
-                tick_label.scale(0.7)
-                tick_label.set(font=self.t_family)
+            if "x_labels" in cfg.keys():
+                custom_labels = {i: Text(dt, color=axes_color, font_size=self.vs_size).scale(0.7) for i, dt in enumerate(df[cfg["x_labels"]], start=0)}
+                axes.x_axis.add_labels(custom_labels)
+                for tick_label in axes.x_axis.labels:
+                    tick_label.set_color(axes_color)
+                    tick_label.scale(0.7)
+                    tick_label.set(font=self.t_family)
+                    tick_label.set(font_size=self.vs_size)
+                for tick_label in axes.x_axis.numbers:
+                    tick_label.set_opacity(0)
+            else:
+                for tick_label in axes.x_axis.numbers:
+                    tick_label.set_color(axes_color)
+                    tick_label.scale(0.7)
+                    tick_label.set(font=self.t_family)
             for tick_label in axes.y_axis.numbers:
                 tick_label.set_color(axes_color)
                 tick_label.scale(0.7)
