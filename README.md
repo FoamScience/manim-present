@@ -66,6 +66,7 @@ All slide components adhere to a common position scheme (These translate to Mani
 - `next_to`: moves the object next to the target, and applies a translation in specified direction
 - `shift`: moves the object by the input vector (eg. `2*UP+RIGHT` will move the object by (1, 2) units)
 - `rotate`: rotates an object around an axis (Z-axis by default) by an input angle (in radians)
+- `scale`: scales an object by an input portion
 
 ### The hooks system
 
