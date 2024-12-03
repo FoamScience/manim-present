@@ -15,7 +15,7 @@ import math, random, re
 from pybtex.database import parse_file as bib_file
 from pybtex import PybtexEngine as bibEngine, format_from_file
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 log = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path=os.getcwd(), config_name="config.yaml")
