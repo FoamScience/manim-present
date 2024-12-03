@@ -232,6 +232,8 @@ def create_presentation_class(cfg):
                 pnt = None if "about_point" not in cfg.rotate.keys() else self.parse_eval(cfg.rotate.about_val)
                 axis = OUT if "axis" not in cfg.rotate.keys() else self.parse_eval(cfg.rotate.axis)
                 last = last.rotate(self.parse_eval(cfg.rotate.angle), axis=axis, about_point=pnt)
+            if "scale" in cfg.keys():
+                last = last.scale(float(cfg.scale))
             return last
     
         def text_step(self, cfg, last, text_type=Text):
@@ -685,6 +687,7 @@ def create_presentation_class(cfg):
             if not isinstance(self.cfg.meta.title, str):
                 raise Exception("Title in meta configuration is empty or not a string")
             title = Text(self.cfg.meta.title, font_size=self.b_size)
+            self.layout.add(title)
             footer_t2w = {}
             if "bold" in self.cfg.meta.footer.keys():
                 footer_t2w = {it: BOLD for it in self.cfg.meta.footer.bold}
@@ -694,8 +697,9 @@ def create_presentation_class(cfg):
                 footer_txt = f"{self.cfg.meta.footer.text} {self.slide_count:{n_digits}d}/{self.total_slides}"
             footer = Text(footer_txt, t2w=footer_t2w, font_size=self.vs_size).to_edge(DOWN+RIGHT)
             author = Text(f"{self.cfg.meta.author}, {self.cfg.meta.time}", font_size=self.vs_size).to_edge(DOWN+LEFT)
-            logo = ImageMobject(f"./images/{self.cfg.meta.logo.image}").next_to(title, UP).scale(self.cfg.meta.logo.scale)
-            self.layout.add(title, footer, author, logo)
+            logo = ImageMobject(f"./images/{self.cfg.meta.logo.image}")
+            logo = self.common_positionning(cfg.meta.logo, logo)
+            self.layout.add(footer, author, logo)
             self.play(FadeIn(self.layout, run_time=self.fadein_rt))
     
         def thanks_page(self):
