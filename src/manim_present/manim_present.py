@@ -79,6 +79,7 @@ def create_presentation_class(cfg):
                 "plot": self.plot_step,
                 "video": self.video_step,
                 "custom": self.custom_step,
+                "separator": self.seperator_step,
             }
             self.diag_map = {
                 "rectangle": self.rectangle_item,
@@ -381,12 +382,19 @@ def create_presentation_class(cfg):
             self.to_next_slide(cfg)
             self.last = last
     
+        def seperator_step(self, cfg, last):
+            start = self.parse_eval(cfg.start)
+            end = self.parse_eval(cfg.end)
+            color = self.parse_eval(cfg.color) if "color" in cfg.keys() else self.main_color
+            last = Line(start, end, color=color)
+            self.play(FadeIn(last, run_time=self.fadein_rt))
+            self.to_next_slide(cfg)
+            self.last = last
+    
         def items_step(self, cfg, last):
-            distance = self.item_distance if "distance" not in cfg.keys() else float(cfg.distance)
-            anchor = last if "anchor" not in cfg.keys() else self.parse_eval(cfg.anchor)
             t2w = {} if "weights" not in cfg.keys() else {item['text']: self.parse_eval(item['weight']) for item in cfg.weights}
             t2c = {} if "colors" not in cfg.keys() else {item['text']: self.parse_eval(item['color']) for item in cfg.colors}
-            last = self.itemize(cfg.bullets, anchor, distance, FadeIn, t2w=t2w, t2c=t2c)
+            last = self.itemize(cfg, FadeIn, t2w=t2w, t2c=t2c)
             self.to_next_slide(cfg)
             self.last = last
     
@@ -722,7 +730,8 @@ def create_presentation_class(cfg):
             self.clear()
             self.add(*objs)
     
-        def itemize(self, items, anchor, distance, animation, **kwargs):
+        def itemize(self, cfg, animation, **kwargs):
+            items = cfg.bullets
             anims = []
             mobjs = []
             mark_item_b = {f"{i+1}{self.item_icon}":BOLD for i in range(len(items))}
@@ -744,9 +753,10 @@ def create_presentation_class(cfg):
                     t2c=mark_item_c,
                     **kwargs))
                 if i == 0:
-                    mobjs[i].next_to(anchor, DOWN*distance).align_to(anchor, LEFT)
+                    self.common_positionning(cfg, mobjs[i])
                 else:
                     mobjs[i].next_to(mobjs[i-1], DOWN).align_to(mobjs[i-1], LEFT)
+            self.last = mobjs[-1]
             anims = [animation(mobjs[i], run_time=self.itemize_rt) for i in range(len(items))]
             self.play(AnimationGroup(*anims))
             return mobjs[-1]
