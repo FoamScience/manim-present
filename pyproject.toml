@@ -31,10 +31,12 @@ dependencies = [
     "opencv-python>=4.10.0.84",
     "ffmpeg-python>=0.2.0",
     "pybtex>=0.24.0",
+    "pypdf2>=3.0.1"
 ]
 
 [project.scripts]
     manim-present = "manim_present.manim_present:main"
+    manim-present-cli = "manim_present.manim_present_cli:main"
 
 [project.urls]
 "Homepage" = "https://github.com/FoamScience/manim-present"
