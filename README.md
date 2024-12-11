@@ -48,11 +48,12 @@ Content slides are composed by steps:
 - `custom`: accepts single-line python manim-like code to produce `Mobjects` to render
 - `diagram`: mostly-linear diagramming through rectangle nodes which can be grouped.
 - `image`: media rendering for raster image formats; from the images folder.
-- `items`: similar to Latex's enumerate, but needs an anchor object for positioning, with
+- `items`: similar to Latex's enumerate, and follows the common position entries, with
   partial weighting and coloring
 - `mathtex`: a Tex environment specifically for math mode. This is similar to `tex`.
 - `plot`: simple scatter or line (or both) plotting. CSV files loaded from a `data` folder.
 - `reset`: resets the slide, keeping layout elements.
+- `separator`: a 2D Line taking `start` and `end` positions as configuration, as well as the color.
 - `svg`: media rendering for SVG objects, recommended for symbols and vector logos.
 - `tex`: Latex rendering, recommended only for equations.
 - `text`: simple text rendering, controlling font size and text color,
